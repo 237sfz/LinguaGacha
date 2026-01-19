@@ -24,7 +24,6 @@ from module.Filter.RuleFilter import RuleFilter
 from module.Localizer.Localizer import Localizer
 from module.ProgressBar import ProgressBar
 from module.PromptBuilder import PromptBuilder
-from module.ResultChecker import ResultChecker
 from module.TextProcessor import TextProcessor
 
 # 翻译器
@@ -199,7 +198,26 @@ class Translator(Base):
         # MTool 优化器预处理
         self.mtool_optimizer_preprocess(self.cache_manager.get_items())
 
+        # 生成缓存数据条目片段
+        chunks, precedings = self.cache_manager.generate_item_chunks(
+            input_token_threshold=input_token_threshold,
+            preceding_lines_threshold=self.config.preceding_lines_threshold,
+        )
+
+        # 生成翻译任务定义
+        self.print("")
+        task_definitions: list[tuple[list[Item], list[Item]]] = []
+        with ProgressBar(transient=False) as progress:
+            pid = progress.new()
+            for items, precedings in zip(chunks, precedings):
+                progress.update(pid, advance=1, total=len(chunks))
+                task_definitions.append((items, precedings))
+
+        # 打印日志
+        self.info(Localizer.get().engine_task_generation.replace("{COUNT}", str(len(task_definitions))))
+
         # 开始循环
+        failed_task_indexes: list[int] = list(range(len(task_definitions)))
         for current_round in range(self.config.max_round):
             # 检测是否需要停止任务
             if Engine.get().get_status() == Base.TaskStatus.STOPPING:
@@ -210,31 +228,27 @@ class Translator(Base):
                 remaining_count = self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE)
                 self.extras["total_line"] = self.extras.get("line", 0) + remaining_count
 
-            # 第二轮开始切分
-            if current_round > 0:
-                input_token_threshold = max(1, int(input_token_threshold / 3))
+            # 后续轮次仅重试失败任务，保持任务定义不变
+            if current_round == 0:
+                task_indexes_to_run = list(range(len(task_definitions)))
+            else:
+                task_indexes_to_run = failed_task_indexes
 
-            # 生成缓存数据条目片段
-            chunks, precedings = self.cache_manager.generate_item_chunks(
-                input_token_threshold=input_token_threshold,
-                preceding_lines_threshold=self.config.preceding_lines_threshold,
-            )
+            if len(task_indexes_to_run) == 0:
+                self.cache_manager.get_project().set_status(Base.ProjectStatus.PROCESSED)
 
-            # 仅在第一轮启用参考上文功能
-            if current_round > 0:
-                precedings = [[] for _ in range(len(precedings))]
+                # 日志
+                self.print("")
+                self.info(Localizer.get().engine_task_done)
+                self.info(Localizer.get().engine_task_save)
+                self.print("")
 
-            # 生成翻译任务
-            self.print("")
-            tasks: list[TranslatorTask] = []
-            with ProgressBar(transient=False) as progress:
-                pid = progress.new()
-                for items, precedings in zip(chunks, precedings):
-                    progress.update(pid, advance=1, total=len(chunks))
-                    tasks.append(TranslatorTask(self.config, self.model, local_flag, items, precedings))
-
-            # 打印日志
-            self.info(Localizer.get().engine_task_generation.replace("{COUNT}", str(len(chunks))))
+                # 通知
+                self.emit(Base.Event.TOAST, {
+                    "type": Base.ToastType.SUCCESS,
+                    "message": Localizer.get().engine_task_done,
+                })
+                break
 
             # 输出开始翻译的日志
             self.print("")
@@ -255,8 +269,11 @@ class Translator(Base):
             with ProgressBar(transient = True) as progress:
                 with concurrent.futures.ThreadPoolExecutor(max_workers = max_workers, thread_name_prefix = Engine.TASK_PREFIX) as executor:
                     futures = []
+                    future_task_index: dict[concurrent.futures.Future, int] = {}
                     pid = progress.new()
-                    for task in tasks:
+                    for task_index in task_indexes_to_run:
+                        items, precedings = task_definitions[task_index]
+
                         # 限制队列大小，避免堆积过多任务导致停止缓慢
                         if not task_limiter.acquire(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
                             return None
@@ -264,13 +281,39 @@ class Translator(Base):
                         if not task_limiter.wait(lambda: Engine.get().get_status() == Base.TaskStatus.STOPPING):
                             return None
 
-                        future = executor.submit(task.start)
+                        pending_items = [item for item in items if item.get_status() == Base.ProjectStatus.NONE]
+                        translator_task = TranslatorTask(self.config, self.model, local_flag, items, precedings)
+                        future = executor.submit(translator_task.start)
                         future.add_done_callback(task_limiter.release)
-                        future.add_done_callback(lambda future: self.task_done_callback(future, pid, progress))
+                        future.add_done_callback(lambda future, pending_items = pending_items: self.task_done_callback(future, pid, progress, pending_items))
                         futures.append(future)
+                        future_task_index[future] = task_index
+
+            failed_task_indexes = []
+            for future in futures:
+                task_index = future_task_index.get(future)
+                if task_index is None:
+                    continue
+
+                try:
+                    result = future.result()
+                except concurrent.futures.CancelledError:
+                    # 取消或异常视为失败，确保进入下一轮重试
+                    failed_task_indexes.append(task_index)
+                    continue
+                except Exception:
+                    failed_task_indexes.append(task_index)
+                    continue
+
+                if not isinstance(result, dict) or len(result) == 0:
+                    failed_task_indexes.append(task_index)
+                    continue
+
+                if result.get("task_failed", True):
+                    failed_task_indexes.append(task_index)
 
             # 判断是否需要继续翻译
-            if self.cache_manager.get_item_count_by_status(Base.ProjectStatus.NONE) == 0:
+            if len(failed_task_indexes) == 0:
                 self.cache_manager.get_project().set_status(Base.ProjectStatus.PROCESSED)
 
                 # 日志
@@ -498,7 +541,7 @@ class Translator(Base):
             webbrowser.open(os.path.abspath(self.config.output_folder))
 
     # 翻译任务完成时
-    def task_done_callback(self, future: concurrent.futures.Future, pid: TaskID, progress: ProgressBar) -> None:
+    def task_done_callback(self, future: concurrent.futures.Future, pid: TaskID, progress: ProgressBar, pending_items: list[Item]) -> None:
         try:
             # 获取结果
             result = future.result()
@@ -507,12 +550,15 @@ class Translator(Base):
             if not isinstance(result, dict) or len(result) == 0:
                 return
 
+            # 只累计本轮新增完成的条目，避免重试任务重复计数
+            pending_done_count = sum(1 for item in pending_items if item.get_status() == Base.ProjectStatus.PROCESSED)
+
             # 记录数据
             with self.data_lock:
                 new = {}
                 new["start_time"] = self.extras.get("start_time", 0)
                 new["total_line"] = self.extras.get("total_line", 0)
-                new["line"] = self.extras.get("line", 0) + result.get("row_count", 0)
+                new["line"] = self.extras.get("line", 0) + pending_done_count
                 new["total_tokens"] = self.extras.get("total_tokens", 0) + result.get("input_tokens", 0) + result.get("output_tokens", 0)
                 new["total_input_tokens"] = self.extras.get("total_input_tokens", 0) + result.get("input_tokens", 0)
                 new["total_output_tokens"] = self.extras.get("total_output_tokens", 0) + result.get("output_tokens", 0)
@@ -538,7 +584,7 @@ class Translator(Base):
             # 触发翻译进度更新事件
             self.emit(Base.Event.TRANSLATION_UPDATE, self.extras)
         except concurrent.futures.CancelledError:
-            # 任务取消是正常流程，无需记录错误
+            # 任务取消由外层判定失败，这里只跳过进度更新
             pass
         except Exception as e:
             self.error(f"{Localizer.get().log_task_fail}", e)

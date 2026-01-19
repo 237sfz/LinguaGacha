@@ -47,11 +47,21 @@ class TranslatorTask(Base):
         self.response_checker = None if skip_response_check else ResponseChecker(self.config, items)
 
     # 启动任务
-    def start(self) -> dict[str, str]:
-        return self.request(self.items, self.processors, self.precedings, self.local_flag)
+    def start(self) -> dict[str, int | bool]:
+        try:
+            return self.request(self.items, self.processors, self.precedings, self.local_flag)
+        except Exception as caught_error:
+            # 异常视为任务失败，确保下一轮重试
+            self.error(f"{Localizer.get().log_task_fail}", caught_error)
+            return {
+                "row_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "task_failed": True,
+            }
 
     # 请求
-    def request(self, items: list[Item], processors: list[TextProcessor], precedings: list[Item], local_flag: bool) -> dict[str, str]:
+    def request(self, items: list[Item], processors: list[TextProcessor], precedings: list[Item], local_flag: bool) -> dict[str, int | bool]:
         # 任务开始的时间
         start_time = time.time()
 
@@ -75,6 +85,7 @@ class TranslatorTask(Base):
                 "row_count": len(items),
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "task_failed": False,
             }
 
         # 生成请求提示词
@@ -90,10 +101,12 @@ class TranslatorTask(Base):
 
         # 如果请求结果标记为 skip，即有错误发生，则跳过本次循环
         if skip == True:
+            # 请求失败直接标记任务失败以触发重试
             return {
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "task_failed": True,
             }
 
         # 提取回复内容
@@ -119,6 +132,9 @@ class TranslatorTask(Base):
         if response_result != "":
             file_log.append(Localizer.get().engine_response_result + "\n" + response_result)
             console_log.append(Localizer.get().engine_response_result + "\n" + response_result) if LogManager.get().is_expert_mode() else None
+
+        # 未完全通过校验视为任务失败，确保整任务重试
+        task_failed = any(v != ResponseChecker.Error.NONE for v in checks)
 
         # 如果有任何正确的条目，则处理结果
         updated_count = 0
@@ -165,12 +181,14 @@ class TranslatorTask(Base):
                 "row_count": updated_count,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "task_failed": task_failed,
             }
         else:
             return {
                 "row_count": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "task_failed": task_failed,
             }
 
     # 合并术语表
