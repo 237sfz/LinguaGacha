@@ -8,7 +8,7 @@ from qfluentwidgets import SingleDirectionScrollArea
 from base.Base import Base
 from module.Config import Config
 from module.Localizer.Localizer import Localizer
-from widget.SliderCard import SliderCard
+from widget.DoubleSpinCard import DoubleSpinCard
 from widget.SpinCard import SpinCard
 from widget.SwitchButtonCard import SwitchButtonCard
 
@@ -16,7 +16,6 @@ from widget.SwitchButtonCard import SwitchButtonCard
 class ExpertSettingsPage(QWidget, Base):
     GLOSSARY_LCS_THRESHOLD_MIN: float = 0.5
     GLOSSARY_LCS_THRESHOLD_MAX: float = 1.0
-    GLOSSARY_LCS_THRESHOLD_SCALE: int = 100
 
     def __init__(self, text: str, window: FluentWindow) -> None:
         super().__init__(window)
@@ -242,54 +241,30 @@ class ExpertSettingsPage(QWidget, Base):
             )
         )
 
-    def format_glossary_lcs_threshold(self, value: int) -> str:
-        threshold = value / self.GLOSSARY_LCS_THRESHOLD_SCALE
-        return f"{threshold:.2f}"
-
     def add_widget_glossary_match_lcs_threshold(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
-        def init(widget: SliderCard) -> None:
-            slider = widget.get_slider()
-            slider.setRange(
-                int(
-                    self.GLOSSARY_LCS_THRESHOLD_MIN * self.GLOSSARY_LCS_THRESHOLD_SCALE
-                ),
-                int(
-                    self.GLOSSARY_LCS_THRESHOLD_MAX * self.GLOSSARY_LCS_THRESHOLD_SCALE
-                ),
+        def init(widget: DoubleSpinCard) -> None:
+            spin_box = widget.get_spin_box()
+            # Keep spin input consistent with other numeric settings while allowing decimals.
+            spin_box.setDecimals(2)
+            spin_box.setRange(
+                self.GLOSSARY_LCS_THRESHOLD_MIN,
+                self.GLOSSARY_LCS_THRESHOLD_MAX,
             )
-            slider.setSingleStep(1)
-            slider.setPageStep(1)
-            slider.setValue(
-                int(
-                    round(
-                        config.glossary_match_lcs_threshold
-                        * self.GLOSSARY_LCS_THRESHOLD_SCALE
-                    )
-                )
-            )
-            widget.get_value_label().setText(
-                self.format_glossary_lcs_threshold(slider.value())
-            )
-            slider.valueChanged.connect(
-                lambda value: widget.get_value_label().setText(
-                    self.format_glossary_lcs_threshold(value)
-                )
-            )
+            spin_box.setSingleStep(0.01)
+            spin_box.setValue(config.glossary_match_lcs_threshold)
             widget.setEnabled(config.glossary_match_use_lcs)
 
-        def slider_released(widget: SliderCard) -> None:
+        def value_changed(widget: DoubleSpinCard) -> None:
             config = Config().load()
-            config.glossary_match_lcs_threshold = (
-                widget.get_slider().value() / self.GLOSSARY_LCS_THRESHOLD_SCALE
-            )
+            config.glossary_match_lcs_threshold = widget.get_spin_box().value()
             config.save()
 
-        self.glossary_lcs_threshold_card = SliderCard(
+        self.glossary_lcs_threshold_card = DoubleSpinCard(
             title=Localizer.get().expert_settings_page_glossary_match_lcs_threshold,
             description=Localizer.get().expert_settings_page_glossary_match_lcs_threshold_desc,
             init=init,
-            slider_released=slider_released,
+            value_changed=value_changed,
         )
         parent.addWidget(self.glossary_lcs_threshold_card)

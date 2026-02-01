@@ -34,11 +34,12 @@ def calculate_lcs_length(a: str, b: str) -> int:
     return previous[-1]
 
 
-def calculate_lcs_ratio(a: str, b: str) -> float:
-    max_length = max(len(a), len(b))
-    if max_length == 0:
+def calculate_lcs_ratio(term: str, source: str) -> float:
+    term_length = len(term)
+    if term_length == 0:
         return 0.0
-    return calculate_lcs_length(a, b) / max_length
+    # Use glossary term length so the threshold stays consistent across sources.
+    return calculate_lcs_length(term, source) / term_length
 
 
 def has_lcs_match(term: str, sources: list[str], threshold: float) -> bool:

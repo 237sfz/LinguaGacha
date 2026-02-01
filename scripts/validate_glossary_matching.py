@@ -22,6 +22,13 @@ def main() -> None:
     ratio = calculate_lcs_ratio(normalized_term, normalized_src)
     assert ratio >= 0.8
 
+    src_text_short: str = "abc"
+    glossary_longer: str = "abcd"
+    normalized_src_short = normalize_nfkc(src_text_short.lower())
+    normalized_term_longer = normalize_nfkc(glossary_longer.lower())
+    ratio = calculate_lcs_ratio(normalized_term_longer, normalized_src_short)
+    assert ratio == 0.75
+
 
 if __name__ == "__main__":
     main()

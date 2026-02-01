@@ -453,7 +453,7 @@ class LocalizerZH:
     )
     expert_settings_page_glossary_match_lcs_threshold: str = "术语 LCS 匹配阈值"
     expert_settings_page_glossary_match_lcs_threshold_desc: str = (
-        "子串匹配失败时触发 LCS 比率判断的最低阈值，建议 0.85~0.90"
+        "子串匹配失败时触发 LCS 比率（LCS(原文, 术语) / 术语）判断的最低阈值，建议 0.85~0.90"
         "<br>"
         "阈值越高越严格，可降低误匹配"
     )
