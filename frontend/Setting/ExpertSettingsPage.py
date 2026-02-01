@@ -249,6 +249,15 @@ class ExpertSettingsPage(QWidget, Base):
     def add_widget_glossary_match_lcs_threshold(
         self, parent: QLayout, config: Config, window: FluentWindow
     ) -> None:
+        def update_threshold(widget: SliderCard, value: int) -> None:
+            widget.get_value_label().setText(self.format_glossary_lcs_threshold(value))
+            config = Config().load()
+            threshold = value / self.GLOSSARY_LCS_THRESHOLD_SCALE
+            if config.glossary_match_lcs_threshold == threshold:
+                return
+            config.glossary_match_lcs_threshold = threshold
+            config.save()
+
         def init(widget: SliderCard) -> None:
             slider = widget.get_slider()
             slider.setRange(
@@ -269,22 +278,13 @@ class ExpertSettingsPage(QWidget, Base):
                     )
                 )
             )
-            widget.get_value_label().setText(
-                self.format_glossary_lcs_threshold(slider.value())
-            )
-            slider.valueChanged.connect(
-                lambda value: widget.get_value_label().setText(
-                    self.format_glossary_lcs_threshold(value)
-                )
-            )
+            update_threshold(widget, slider.value())
+            # sliderReleased 只覆盖鼠标拖动，valueChanged 用于键盘/滚轮等输入路径。
+            slider.valueChanged.connect(lambda value: update_threshold(widget, value))
             widget.setEnabled(config.glossary_match_use_lcs)
 
         def slider_released(widget: SliderCard) -> None:
-            config = Config().load()
-            config.glossary_match_lcs_threshold = (
-                widget.get_slider().value() / self.GLOSSARY_LCS_THRESHOLD_SCALE
-            )
-            config.save()
+            update_threshold(widget, widget.get_slider().value())
 
         self.glossary_lcs_threshold_card = SliderCard(
             title=Localizer.get().expert_settings_page_glossary_match_lcs_threshold,
