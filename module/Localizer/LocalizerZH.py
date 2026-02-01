@@ -445,6 +445,18 @@ class LocalizerZH:
         "<br>"
         "• 禁用后，会将完整的文本条目发送给模型翻译，可能会获得更完整的语义，但会降低文本保护效果"
     )
+    expert_settings_page_glossary_match_use_lcs: str = "启用术语 LCS 相似度匹配"
+    expert_settings_page_glossary_match_use_lcs_desc: str = (
+        "启用后，术语匹配会先做 NFKC 归一化，子串匹配失败时再使用 LCS 相似度判定"
+        "<br>"
+        "适合拼写轻微差异或全角/半角混用的场景"
+    )
+    expert_settings_page_glossary_match_lcs_threshold: str = "术语 LCS 匹配阈值"
+    expert_settings_page_glossary_match_lcs_threshold_desc: str = (
+        "子串匹配失败时触发 LCS 比率判断的最低阈值，建议 0.85~0.90"
+        "<br>"
+        "阈值越高越严格，可降低误匹配"
+    )
 
     # 质量类通用
     quality_import: str = "导入"

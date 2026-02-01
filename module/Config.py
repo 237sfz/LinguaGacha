@@ -62,6 +62,8 @@ class Config:
 
     # GlossaryPage
     glossary_default_preset: str = ""
+    glossary_match_use_lcs: bool = False
+    glossary_match_lcs_threshold: float = 0.9
 
     # TextPreservePage
     text_preserve_default_preset: str = ""
@@ -152,6 +154,8 @@ class Config:
         self.deduplication_in_bilingual: bool = True
         self.write_translated_name_fields_to_file: bool = True
         self.auto_process_prefix_suffix_preserved_text: bool = True
+        self.glossary_match_use_lcs: bool = False
+        self.glossary_match_lcs_threshold: float = 0.9
 
     # 初始化模型管理器
     def initialize_models(self) -> int:
