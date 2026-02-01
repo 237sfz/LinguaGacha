@@ -7,6 +7,8 @@ from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Response.ResponseChecker import ResponseChecker
 from module.Text.TextHelper import TextHelper
+from module.Text.TextMatcher import calculate_lcs_ratio
+from module.Text.TextMatcher import normalize_nfkc
 from module.TextProcessor import TextProcessor
 from module.Utils.ChunkLimiter import ChunkLimiter
 
@@ -41,6 +43,7 @@ class ResultChecker(Base):
             {
                 "src": term.get("src", ""),
                 "dst": term.get("dst", ""),
+                "case_sensitive": term.get("case_sensitive", False),
             }
             for term in glossary_items
         ]
@@ -128,14 +131,41 @@ class ResultChecker(Base):
         if not self.prepared_glossary_data:
             return False
 
+        normalized_src_repl = normalize_nfkc(src_repl)
+        normalized_dst_repl = normalize_nfkc(dst_repl)
+        glossary_match_use_lcs = self.config.glossary_match_use_lcs
+        glossary_match_lcs_threshold = self.config.glossary_match_lcs_threshold
+
         for term in self.prepared_glossary_data:
             glossary_src = term.get("src", "")
             glossary_dst = term.get("dst", "")
-            # 原文包含术语原文，但译文不包含术语译文
+            case_sensitive = term.get("case_sensitive", False)
+            if not glossary_src:
+                continue
+            normalized_glossary_src = normalize_nfkc(glossary_src)
+            normalized_glossary_dst = normalize_nfkc(glossary_dst)
+            normalized_src = normalized_src_repl
+            normalized_dst = normalized_dst_repl
+            if not case_sensitive:
+                normalized_glossary_src = normalized_glossary_src.lower()
+                normalized_glossary_dst = normalized_glossary_dst.lower()
+                normalized_src = normalized_src.lower()
+                normalized_dst = normalized_dst.lower()
+
+            if normalized_glossary_src in normalized_src:
+                if (
+                    normalized_glossary_dst
+                    and normalized_glossary_dst not in normalized_dst
+                ):
+                    return True
+                continue
+            if not glossary_match_use_lcs:
+                continue
             if (
-                glossary_src
-                and glossary_src in src_repl
-                and glossary_dst not in dst_repl
+                calculate_lcs_ratio(normalized_glossary_src, normalized_src)
+                >= glossary_match_lcs_threshold
+                and normalized_glossary_dst
+                and normalized_glossary_dst not in normalized_dst
             ):
                 return True
         return False
@@ -146,16 +176,42 @@ class ResultChecker(Base):
             return []
 
         src_repl, dst_repl = self.get_replaced_text(item)
+        normalized_src_repl = normalize_nfkc(src_repl)
+        normalized_dst_repl = normalize_nfkc(dst_repl)
+        glossary_match_use_lcs = self.config.glossary_match_use_lcs
+        glossary_match_lcs_threshold = self.config.glossary_match_lcs_threshold
         failed_terms: list[tuple[str, str]] = []
 
         for term in self.prepared_glossary_data:
             glossary_src = term.get("src", "")
             glossary_dst = term.get("dst", "")
-            # 原文包含术语原文，但译文不包含术语译文
+            case_sensitive = term.get("case_sensitive", False)
+            if not glossary_src:
+                continue
+            normalized_glossary_src = normalize_nfkc(glossary_src)
+            normalized_glossary_dst = normalize_nfkc(glossary_dst)
+            normalized_src = normalized_src_repl
+            normalized_dst = normalized_dst_repl
+            if not case_sensitive:
+                normalized_glossary_src = normalized_glossary_src.lower()
+                normalized_glossary_dst = normalized_glossary_dst.lower()
+                normalized_src = normalized_src.lower()
+                normalized_dst = normalized_dst.lower()
+
+            if normalized_glossary_src in normalized_src:
+                if (
+                    normalized_glossary_dst
+                    and normalized_glossary_dst not in normalized_dst
+                ):
+                    failed_terms.append((glossary_src, glossary_dst))
+                continue
+            if not glossary_match_use_lcs:
+                continue
             if (
-                glossary_src
-                and glossary_src in src_repl
-                and glossary_dst not in dst_repl
+                calculate_lcs_ratio(normalized_glossary_src, normalized_src)
+                >= glossary_match_lcs_threshold
+                and normalized_glossary_dst
+                and normalized_glossary_dst not in normalized_dst
             ):
                 failed_terms.append((glossary_src, glossary_dst))
 

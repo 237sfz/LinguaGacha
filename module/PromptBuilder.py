@@ -8,6 +8,8 @@ from model.Item import Item
 from module.Config import Config
 from module.Data.DataManager import DataManager
 from module.Data.QualityRuleSnapshot import QualityRuleSnapshot
+from module.Text.TextMatcher import has_lcs_match
+from module.Text.TextMatcher import normalize_nfkc
 
 
 class PromptBuilder(Base):
@@ -161,7 +163,12 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        full_lower = full.lower()  # 用于不区分大小写的匹配
+        normalized_full = normalize_nfkc(full)
+        normalized_full_lower = normalized_full.lower()
+        normalized_srcs = [normalize_nfkc(src) for src in srcs]
+        normalized_srcs_lower = [src.lower() for src in normalized_srcs]
+        glossary_match_use_lcs = self.config.glossary_match_use_lcs
+        glossary_match_lcs_threshold = self.config.glossary_match_lcs_threshold
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
@@ -178,11 +185,26 @@ class PromptBuilder(Base):
             # 根据 case_sensitive 决定匹配方式
             if is_case_sensitive:
                 # 大小写敏感：直接使用 in
-                if src in full:
+                normalized_src = normalize_nfkc(src)
+                if normalized_src in normalized_full:
+                    glossary.append(v)
+                    continue
+                if glossary_match_use_lcs and has_lcs_match(
+                    normalized_src, normalized_srcs, glossary_match_lcs_threshold
+                ):
                     glossary.append(v)
             else:
                 # 大小写不敏感：转换为小写后匹配
-                if src.lower() in full_lower:
+                normalized_src = normalize_nfkc(src)
+                normalized_src_lower = normalized_src.lower()
+                if normalized_src_lower in normalized_full_lower:
+                    glossary.append(v)
+                    continue
+                if glossary_match_use_lcs and has_lcs_match(
+                    normalized_src_lower,
+                    normalized_srcs_lower,
+                    glossary_match_lcs_threshold,
+                ):
                     glossary.append(v)
 
         # 构建文本
@@ -217,7 +239,12 @@ class PromptBuilder(Base):
     # 构造术语表
     def build_glossary_sakura(self, srcs: list[str]) -> str:
         full = "\n".join(srcs)
-        full_lower = full.lower()  # 用于不区分大小写的匹配
+        normalized_full = normalize_nfkc(full)
+        normalized_full_lower = normalized_full.lower()
+        normalized_srcs = [normalize_nfkc(src) for src in srcs]
+        normalized_srcs_lower = [src.lower() for src in normalized_srcs]
+        glossary_match_use_lcs = self.config.glossary_match_use_lcs
+        glossary_match_lcs_threshold = self.config.glossary_match_lcs_threshold
 
         # 筛选匹配的术语
         glossary: list[dict[str, str]] = []
@@ -234,11 +261,26 @@ class PromptBuilder(Base):
             # 根据 case_sensitive 决定匹配方式
             if is_case_sensitive:
                 # 大小写敏感：直接使用 in
-                if src in full:
+                normalized_src = normalize_nfkc(src)
+                if normalized_src in normalized_full:
+                    glossary.append(v)
+                    continue
+                if glossary_match_use_lcs and has_lcs_match(
+                    normalized_src, normalized_srcs, glossary_match_lcs_threshold
+                ):
                     glossary.append(v)
             else:
                 # 大小写不敏感：转换为小写后匹配
-                if src.lower() in full_lower:
+                normalized_src = normalize_nfkc(src)
+                normalized_src_lower = normalized_src.lower()
+                if normalized_src_lower in normalized_full_lower:
+                    glossary.append(v)
+                    continue
+                if glossary_match_use_lcs and has_lcs_match(
+                    normalized_src_lower,
+                    normalized_srcs_lower,
+                    glossary_match_lcs_threshold,
+                ):
                     glossary.append(v)
 
         # 构建文本

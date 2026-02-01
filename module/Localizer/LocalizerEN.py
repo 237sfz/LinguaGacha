@@ -445,6 +445,18 @@ class LocalizerEN(LocalizerZH):
         "<br>"
         "• Disabled: Sends the full text for better context, but may reduce preserve effectiveness"
     )
+    expert_settings_page_glossary_match_use_lcs: str = "Enable LCS-based Glossary Matching"
+    expert_settings_page_glossary_match_use_lcs_desc: str = (
+        "When enabled, glossary matching uses NFKC normalization and falls back to LCS similarity after substring checks"
+        "<br>"
+        "Recommended for small spelling variations or full-width/half-width mixes"
+    )
+    expert_settings_page_glossary_match_lcs_threshold: str = "Glossary LCS Match Threshold"
+    expert_settings_page_glossary_match_lcs_threshold_desc: str = (
+        "Minimum LCS ratio to treat a term as matched when substring matching fails, recommended 0.85~0.90"
+        "<br>"
+        "Higher values are stricter and reduce false positives"
+    )
 
     # 质量类通用
     quality_import: str = "Import"
