@@ -453,7 +453,7 @@ class LocalizerEN(LocalizerZH):
     )
     expert_settings_page_glossary_match_lcs_threshold: str = "Glossary LCS Match Threshold"
     expert_settings_page_glossary_match_lcs_threshold_desc: str = (
-        "Minimum LCS ratio to treat a term as matched when substring matching fails, recommended 0.85~0.90"
+        "Minimum LCS ratio (LCS(source, term) / term) when substring matching fails, recommended 0.85~0.90"
         "<br>"
         "Higher values are stricter and reduce false positives"
     )
